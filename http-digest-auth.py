@@ -22,7 +22,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         # setup basic stuff
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        self._supported_tools = set(['Repeater', 'Scanner'])
+        self._supported_tools = set(['Repeater', 'Scanner', 'Intruder'])
         self._ui = Interface(self)
         callbacks.setExtensionName("HTTP Digest Authentication")
         callbacks.registerHttpListener(self)
@@ -30,6 +30,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         # setup default username and password
         self._auth = DigestAuthentication("root","root123!")
         self._saved_nonce = None
+        self._need_reauth = True
 
         if DEV:
             self._enabled = True
@@ -87,16 +88,38 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
                 body_bytes = messageInfo.getRequest()[requestInfo.getBodyOffset():]
                 body_str = self._helpers.bytesToString(body_bytes)
                 new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
-                logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
                 return new_msg
         else:
             return None
+
+    def check_response(self, messageInfo):
+        responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
+        headers = responseInfo.getHeaders()
+        update = False
+        auth_header = None
+        
+        logging.debug("Processing response...")
+        for h in headers:
+            if '401 Unauthorized' in h:
+                logging.debug("Need to update...")
+                update = True
+            if ('WWW-Authenticate' in h) and ('nonce' in h):
+                    logging.debug("Digest Auth header found...")
+                    auth_header = h
+        return update and auth_header
+
 
     def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
         if not self._enabled:
             return
 
         if not messageIsRequest:
+            if self._auto_update_nonce:
+                self._need_reauth = self.check_response(messageInfo)
+                if self._need_reauth:
+                    logging.debug("Re-authenticating")
+                    updated_resp = self.processResponse(messageInfo)
+                    self._need_reauth = False
             return
 
         if not self._callbacks.getToolName(toolFlag) in self._supported_tools:
@@ -127,12 +150,15 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
         messageInfo.setRequest(new_msg)
 
-        if self._auto_update_nonce:
-            # Make a first request and check if we need to update nonce and repeat
+        if self._auto_update_nonce and self._need_reauth:
+            # Make a first request to get new nonce and check if we need to update nonce
             resp = self.makeRequest(messageInfo, new_msg)
             updated_resp = self.processResponse(resp)
+            self._need_reauth = False
             if updated_resp:
                 messageInfo.setRequest(updated_resp)
+
+        logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
         return
     
     # GETTERS / SETTERS section

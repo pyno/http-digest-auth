@@ -23,7 +23,8 @@ So I decided to write and publish this extension, hoping it will come in handy a
 Currently the tools supports the following features:
 - Set credentials
 - Auto-update nonce if it detects a "401 Unauthorized" response from the server
+- Show current nonce (debug purposes only)
 
-and it works with Repeater and Scanner tools.
+and it works with Repeater, Scanner and Intruder tools.
 
 **Last but not least**: PRs are always welcome!

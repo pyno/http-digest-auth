@@ -117,6 +117,8 @@ class Interface:
                 actionPerformed=tools_check)
         scanner_chk = JCheckBox("Scanner", "Scanner" in self._extender.get_tools(), 
                 actionPerformed=tools_check)
+        intruder_chk = JCheckBox("Intruder", "Intruder" in self._extender.get_tools(), 
+                actionPerformed=tools_check)
 
         layout = GroupLayout(self._panel)
         self._panel.setLayout(layout)
@@ -141,7 +143,8 @@ class Interface:
                     .addComponent(nonce_curr_chk)
                     .addComponent(tools_lbl)
                     .addComponent(repeater_chk)
-                    .addComponent(scanner_chk))
+                    .addComponent(scanner_chk)
+                    .addComponent(intruder_chk))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING)
                     .addComponent(usr_txt)
                     .addComponent(pwd_txt)
@@ -189,7 +192,9 @@ class Interface:
                 .addGroup(layout.createParallelGroup()
                     .addComponent(repeater_chk))
                 .addGroup(layout.createParallelGroup()
-                    .addComponent(scanner_chk)))
+                    .addComponent(scanner_chk))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(intruder_chk)))
 
         layout.setVerticalGroup(vGroup)
 
