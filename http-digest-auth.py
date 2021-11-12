@@ -23,6 +23,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
         self._supported_tools = set(['Repeater', 'Scanner'])
+        self._ui = Interface(self)
         callbacks.setExtensionName("HTTP Digest Authentication")
         callbacks.registerHttpListener(self)
 
@@ -64,6 +65,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
                 response_digest_auth = DigestAuthentication(self._auth.username, self._auth.password, 
                         self._auth.method, self._auth.uri, auth_header)
                 self._saved_nonce = response_digest_auth.nonce
+                self._ui.update_nonce()
 
                 logging.debug("Sending updated request")
                 requestInfo = self._helpers.analyzeRequest(messageInfo)
@@ -111,6 +113,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
                 self._auth.parse_auth_header(h)
                 if self._saved_nonce != None:
                     self._auth.nonce = self._saved_nonce
+                else:
+                    self._saved_nonce = self._auth.nonce
                 self._auth.uri = uri
                 self._auth.method = method
                 new_headers.append(self._auth.build_digest_header())
@@ -136,9 +140,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         return "Digest Authentication"
 
     def getUiComponent(self):
-        ui = Interface(self)
-        ui.draw_tab()
-        return ui.get_main_panel()
+        self._ui.draw_tab()
+        return self._ui.get_main_panel()
 
     def get_auto_update_nonce(self):
         return self._auto_update_nonce
@@ -154,6 +157,12 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
 
     def set_password(self, password):
         self._auth.password = password
+
+    def set_saved_nonce(self, nonce):
+        self._saved_nonce = nonce
+
+    def get_saved_nonce(self):
+        return self._saved_nonce
 
     def get_password(self):
         return self._auth.password

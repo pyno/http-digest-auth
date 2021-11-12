@@ -11,20 +11,30 @@ class Interface:
         self._extender = burp_extender
         self._main_panel = JPanel()
         self._panel = JPanel()
+        self._show_nonce = True
+        self._nonce_curr_lbl = JTextField("")
+        self._nonce_curr_lbl.setEditable(False)
+
+    def update_nonce(self):
+        if not self._show_nonce:
+            return
+        nonce = self._extender.get_saved_nonce()
+        if nonce:
+            self._nonce_curr_lbl.setText(nonce)
+        else:
+            self._nonce_curr_lbl.setText("N.A.")
+
+    def clear_nonce(self):
+        self._nonce_curr_lbl.setText("")
 
     def get_main_panel(self):
         return self._main_panel
 
     def draw_tab(self):
-        #self._panel.layout = BorderLayout()
-        #self._panel.border = BorderFactory.createTitledBorder("Credentials")
 
         def btn1Click(event):
             self._extender.set_username(usr_txt.getText())
             self._extender.set_password(pwd_txt.getText())
-            #btn1.text = "Saved"
-            # TODO: set to "Save" when typig into the textbox
-            #       set to "Saved" when the button is clicked
             return
 
         def btn2Click(event):
@@ -53,6 +63,14 @@ class Interface:
                 self._extender.del_tool(cmd)
             else:
                 self._extender.add_tool(cmd)
+
+        def toggle_show_nonce(event):
+            if self._show_nonce:
+                self._show_nonce = False
+                self.clear_nonce()
+            else:
+                self._show_nonce = True
+                self.update_nonce()
             
 
         ban_lbl = JLabel("HTTP Digest Authentication")
@@ -61,7 +79,6 @@ class Interface:
         ban2_lbl = JLabel("by pyno")
         sep_lbl = JSeparator(SwingConstants.HORIZONTAL)
         sep_pad = JLabel("  ")
-		#sep_pad.setBorder(BorderFactory.createEmptyBorder(0,0,7,0))
     
         btn1 = JButton("Save", actionPerformed=btn1Click)
 
@@ -78,6 +95,7 @@ class Interface:
 
         pwd_lbl = JLabel("Password")
         pwd_txt = JTextField(self._extender.get_password())
+        pwd_txt.setPreferredSize(Dimension(400,1))
 
         cred_lbl = JLabel("Credentials")
         cred_fnt = cred_lbl.getFont().getName()
@@ -87,14 +105,18 @@ class Interface:
         nonce_fnt = nonce_lbl.getFont().getName()
         nonce_lbl.setFont(Font(nonce_fnt, Font.BOLD, 14))
 
-        nonce_chk = JCheckBox("Auto-update nonce", self._extender.get_auto_update_nonce(), actionPerformed=auto_update_check)
+        nonce_chk = JCheckBox("Auto-update nonce", self._extender.get_auto_update_nonce(), 
+                actionPerformed=auto_update_check)
+
+        nonce_curr_chk  = JCheckBox("Show current nonce", self._show_nonce, actionPerformed=toggle_show_nonce)
     
         tools_lbl = JLabel("Tools")
         tools_fnt = tools_lbl.getFont().getName()
         tools_lbl.setFont(Font(tools_fnt, Font.BOLD, 14))
-        repeater_chk = JCheckBox("Repeater", "Repeater" in self._extender.get_tools(), actionPerformed=tools_check)
-        scanner_chk = JCheckBox("Scanner", "Scanner" in self._extender.get_tools(), actionPerformed=tools_check)
-
+        repeater_chk = JCheckBox("Repeater", "Repeater" in self._extender.get_tools(), 
+                actionPerformed=tools_check)
+        scanner_chk = JCheckBox("Scanner", "Scanner" in self._extender.get_tools(), 
+                actionPerformed=tools_check)
 
         layout = GroupLayout(self._panel)
         self._panel.setLayout(layout)
@@ -116,12 +138,14 @@ class Interface:
                     .addComponent(btn1)
                     .addComponent(nonce_lbl)
                     .addComponent(nonce_chk)
+                    .addComponent(nonce_curr_chk)
                     .addComponent(tools_lbl)
                     .addComponent(repeater_chk)
                     .addComponent(scanner_chk))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING)
                     .addComponent(usr_txt)
-                    .addComponent(pwd_txt)))
+                    .addComponent(pwd_txt)
+                    .addComponent(self._nonce_curr_lbl)))
 
         layout.setHorizontalGroup(hGroup)
         
@@ -155,6 +179,9 @@ class Interface:
                     .addComponent(nonce_lbl))
                 .addGroup(layout.createParallelGroup()
                     .addComponent(nonce_chk))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(nonce_curr_chk)
+                    .addComponent(self._nonce_curr_lbl))
                 .addGroup(layout.createParallelGroup()
                     .addComponent(sep_pad))
                 .addGroup(layout.createParallelGroup()
