@@ -8,7 +8,7 @@ Because, why not? ;)
 
 No seriously, during some pentests on IoT devices I still have to deal with HTTP Digest authentication (mostly on IP cameras), and it seems other users are also struggling with this (https://forum.portswigger.net/thread/digest-auth-in-burp-was-removed-de8107ec).
 
-So I decided to write and publish this extension, hoping it will come in handy and save someone time.
+So I decided to write and publish this extension, hoping it will come in handy and save someone's time.
 
 ## Setup
 1. Download and run Burp Suite: http://portswigger.net/burp/download.html
@@ -26,5 +26,8 @@ Currently the tools supports the following features:
 - Show current nonce (debug purposes only)
 
 and it works with Repeater, Scanner and Intruder tools.
+
+Missing features a.k.a. TODO:
+- Auto-increment of nonce count
 
 **Last but not least**: PRs are always welcome!
