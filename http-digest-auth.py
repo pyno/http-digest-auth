@@ -5,12 +5,16 @@ from burp import IScannerListener
 from burp import IExtensionStateListener
 from burp import ITab
 from java.io import PrintWriter
+from threading import Lock
 
 import logging
 from gui.interface import Interface
 from auth.digest_auth import DigestAuthentication
 
-DEV = False
+_reauth_counter = 0
+_reauth_lock = Lock()
+
+DEV = True
 if DEV:
     logging.basicConfig(level=logging.DEBUG)
 else:
@@ -24,6 +28,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         self._helpers = callbacks.getHelpers()
         self._supported_tools = set(['Repeater', 'Scanner', 'Intruder'])
         self._ui = Interface(self)
+        self._reauth_limit = 10
         callbacks.setExtensionName("HTTP Digest Authentication")
         callbacks.registerHttpListener(self)
 
@@ -47,11 +52,12 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
             int(requestURL.getPort()), requestURL.getProtocol() == "https"), message)
 
     def update_request(self, messageInfo):
+
         responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
         headers = responseInfo.getHeaders()
         auth_header = None
         
-        logging.debug("Processing response...")
+        logging.debug("update_request")
         for h in headers:
             if ('WWW-Authenticate' in h) and ('nonce' in h):
                     logging.debug("Digest Auth header found...")
@@ -85,6 +91,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
             new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
             return new_msg
         else:
+            logging.debug("Digest Auth header or nonce not found!")
             return None
 
     def check_response(self, messageInfo):
@@ -105,6 +112,9 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
 
 
     def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
+        global _reauth_counter
+        global _reauth_lock
+
         if not self._enabled:
             return
 
@@ -141,11 +151,22 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
         messageInfo.setRequest(new_msg)
 
+
+        _reauth_lock.acquire()
+        _reauth_counter += 1
+        logging.debug("Request n. {}".format(_reauth_counter))
+        if(_reauth_counter == self._reauth_limit):
+            logging.debug("Request limit reached")
+            self._need_reauth = True
+            _reauth_counter = 0
+
+        _reauth_lock.release()
+
         if self._auto_update_nonce and self._need_reauth:
-            # Make a first request to get new nonce and check if we need to update nonce
-            logging.debug("Need to re-authenticate..")
-            resp = self.makeRequest(messageInfo, new_msg)
+            # Make a first request to check if we need to update nonce
+            logging.debug("Check if we need to update nonce..")
             logging.debug("\n\nSending reauth request: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
+            resp = self.makeRequest(messageInfo, new_msg)
             updated_resp = self.update_request(resp)
             self._need_reauth = False
             if updated_resp:
