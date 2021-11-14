@@ -27,7 +27,4 @@ Currently the tools supports the following features:
 
 and it works with Repeater, Scanner and Intruder tools.
 
-Missing features a.k.a. TODO:
-- Auto-increment of nonce count
-
 **Last but not least**: PRs are always welcome!

@@ -5,7 +5,7 @@ import os
 #from urllib.parse import urlparse
 from urlparse import urlparse
 
-class DigestAuthentication:
+class DigestAuthentication(object):
 
     def __init__(self, username, password, method = "GET", uri = "", header_str=None):
         self.header_list = ['username' , 'realm' , 'cnonce' , 'nonce' , 'nc' , 'uri' , 'algorithm' , 'response' , 'qop', 'opaque', 'entdig']
@@ -15,7 +15,7 @@ class DigestAuthentication:
         self.uri = uri
         self.realm = None
         self.cnonce = None
-        self.nonce = None
+        self._nonce = None
         self.nc = None
         self.uri = None
         self.algorithm = None
@@ -48,9 +48,11 @@ class DigestAuthentication:
             elif 'cnonce' in key:
                 self.cnonce = val
             elif 'nonce' in key:
-                self.nonce = val
+                if not self._nonce:
+                    self._nonce = val
             elif 'nc' in key:
-                self.nc = val
+                if not self.nc:
+                    self.nc = int(val,16)
             elif 'uri' in key:
                 self.uri = val
             elif 'algorithm' in key:
@@ -66,6 +68,17 @@ class DigestAuthentication:
         header_string += ', '.join('{0}="{1}"'.format(header,self.__dict__[header]) for header in self.header_list) 
         logging.debug('Header string: {}'.format(header_string))
         return header_string
+
+
+    def set_nonce(self, nonce):
+        if self._nonce != nonce:
+            logging.debug("SETTING NONCE {} ==> {}".format(self._nonce, nonce))
+            self._nonce = nonce
+            self.nc = 0
+
+
+    def get_nonce(self):
+        return self._nonce
 
 
     def build_digest_header(self):
@@ -119,38 +132,36 @@ class DigestAuthentication:
         HA1 = hash_utf8(A1)
         HA2 = hash_utf8(A2)
 
-        # TODO: update nonce count
-        #if nonce == self._thread_local.last_nonce:
-        #    self._thread_local.nonce_count += 1
-        #else:
-        #    self._thread_local.nonce_count = 1
-        #ncvalue = '%08x' % self._thread_local.nonce_count
-        #s = str(self._thread_local.nonce_count).encode('utf-8')
+        # Update nonce count
+        # The module sets nc to zero when a new nonce is set
+        # so here we just need to increment
+        self.nc += 1
+
         s = str(self.nc).encode('utf-8')
-        s += self.nonce.encode('utf-8')
+        s += self._nonce.encode('utf-8')
         s += time.ctime().encode('utf-8')
         s += os.urandom(8)
 
         self.cnonce = (hashlib.sha1(s).hexdigest()[:16])
         if _algorithm == 'MD5-SESS':
-            HA1 = hash_utf8('%s:%s:%s' % (HA1, self.nonce, self.cnonce))
+            HA1 = hash_utf8('%s:%s:%s' % (HA1, self._nonce, self.cnonce))
 
         if not self.qop:
-            self.response = KD(HA1, "%s:%s" % (self.nonce, HA2))
+            self.response = KD(HA1, "%s:%s" % (self._nonce, HA2))
         elif self.qop == 'auth' or 'auth' in self.qop.split(','):
+            # XXX: Should nc be reppresented as hex in the header string?? - hex(self.nc)
+            #      Should it be reppresented as a fixed size number (e.g. 0000002c)
             noncebit = "%s:%s:%s:%s:%s" % (
-                self.nonce, self.nc, self.cnonce, 'auth', HA2
+                self._nonce, self.nc, self.cnonce, 'auth', HA2
             )
             self.response = KD(HA1, noncebit)
         else:
             # XXX handle auth-int.
             return None
 
-        #self._thread_local.last_nonce = nonce
-
         # XXX should the partial digests be encoded too?
         base = 'username="%s", realm="%s", nonce="%s", uri="%s", ' \
-               'response="%s"' % (self.username, self.realm, self.nonce, path, self.response)
+               'response="%s"' % (self.username, self.realm, self._nonce, path, self.response)
         if self.opaque:
             base += ', opaque="%s"' % self.opaque
         if self.algorithm:

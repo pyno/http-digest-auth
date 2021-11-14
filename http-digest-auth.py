@@ -14,7 +14,7 @@ from auth.digest_auth import DigestAuthentication
 _reauth_counter = 0
 _reauth_lock = Lock()
 
-DEV = True
+DEV = False
 if DEV:
     logging.basicConfig(level=logging.DEBUG)
 else:
@@ -33,6 +33,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         callbacks.registerHttpListener(self)
 
         # setup default username and password
+        logging.debug("New DigestAuthentication object")
         self._auth = DigestAuthentication("root","root123!")
         self._saved_nonce = None
         self._need_reauth = True
@@ -66,7 +67,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         if auth_header:
             response_digest_auth = DigestAuthentication(self._auth.username, self._auth.password, 
                     self._auth.method, self._auth.uri, auth_header)
-            self._saved_nonce = response_digest_auth.nonce
+            self._saved_nonce = response_digest_auth.get_nonce()
+            logging.debug("New saved nonce: {}".format(self._saved_nonce))
             self._ui.update_nonce()
 
             logging.debug("Building updated request")
@@ -78,11 +80,15 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
             new_headers = []
             for header in headers:
                 if 'Authorization: Digest' in header:
+                    logging.debug("Updating nonce")
                     self._auth.parse_auth_header(header)
-                    self._auth.nonce = self._saved_nonce
+                    logging.debug("2")
+                    self._auth.set_nonce(self._saved_nonce)
                     self._auth.uri = uri
                     self._auth.method = method
-                    new_headers.append(self._auth.build_digest_header())
+                    header_str = self._auth.build_digest_header()
+                    logging.debug("New header: {}".format(header_str))
+                    new_headers.append(header_str)
                 else:
                     new_headers.append(header)
 
@@ -137,9 +143,10 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
             if 'Authorization: Digest' in h:
                 self._auth.parse_auth_header(h)
                 if self._saved_nonce != None:
-                    self._auth.nonce = self._saved_nonce
+                    logging.debug("1")
+                    self._auth.set_nonce(self._saved_nonce)
                 else:
-                    self._saved_nonce = self._auth.nonce
+                    self._saved_nonce = self._auth.get_nonce()
                 self._auth.uri = uri
                 self._auth.method = method
                 new_headers.append(self._auth.build_digest_header())
