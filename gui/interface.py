@@ -56,6 +56,14 @@ class Interface:
                 logging.debug("auto-update un-checked")
                 self._extender.set_auto_update_nonce(False)
 
+        def use_suite_scope_check(event):
+            if(scope_chk.isSelected()):
+                logging.debug("use suite scope checked")
+                self._extender.set_use_suite_scope(True)
+            else:
+                logging.debug("use suite scope un-checked")
+                self._extender.set_use_suite_scope(False)
+
         def tools_check(event):
             cmd = event.getActionCommand()
             logging.debug("Toggling: {}".format(cmd))
@@ -119,6 +127,14 @@ class Interface:
                 actionPerformed=tools_check)
         intruder_chk = JCheckBox("Intruder", "Intruder" in self._extender.get_tools(), 
                 actionPerformed=tools_check)
+        proxy_chk = JCheckBox("Proxy", "Proxy" in self._extender.get_tools(), 
+                actionPerformed=tools_check)
+
+        scope_lbl = JLabel("Scope")
+        scope_fnt = scope_lbl.getFont().getName()
+        scope_lbl.setFont(Font(scope_fnt, Font.BOLD, 14))
+        scope_chk = JCheckBox("Use suite scope", self._extender.get_use_suite_scope(),
+                actionPerformed=use_suite_scope_check)
 
         layout = GroupLayout(self._panel)
         self._panel.setLayout(layout)
@@ -144,7 +160,10 @@ class Interface:
                     .addComponent(tools_lbl)
                     .addComponent(repeater_chk)
                     .addComponent(scanner_chk)
-                    .addComponent(intruder_chk))
+                    .addComponent(intruder_chk)
+                    .addComponent(proxy_chk)
+                    .addComponent(scope_lbl)
+                    .addComponent(scope_chk))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING)
                     .addComponent(usr_txt)
                     .addComponent(pwd_txt)
@@ -194,7 +213,15 @@ class Interface:
                 .addGroup(layout.createParallelGroup()
                     .addComponent(scanner_chk))
                 .addGroup(layout.createParallelGroup()
-                    .addComponent(intruder_chk)))
+                    .addComponent(intruder_chk))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(proxy_chk))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(sep_pad))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(scope_lbl))
+                .addGroup(layout.createParallelGroup()
+                    .addComponent(scope_chk)))
 
         layout.setVerticalGroup(vGroup)
 

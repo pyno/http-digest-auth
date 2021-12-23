@@ -11,9 +11,6 @@ import logging
 from gui.interface import Interface
 from auth.digest_auth import DigestAuthentication
 
-_reauth_counter = 0
-_reauth_lock = Lock()
-
 DEV = False
 if DEV:
     logging.basicConfig(level=logging.DEBUG)
@@ -26,15 +23,14 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         # setup basic stuff
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        self._supported_tools = set(['Repeater', 'Scanner', 'Intruder'])
+        self._supported_tools = set(['Repeater', 'Scanner', 'Intruder', 'Proxy', 'Extender'])
         self._ui = Interface(self)
-        self._reauth_limit = 10
         callbacks.setExtensionName("HTTP Digest Authentication")
         callbacks.registerHttpListener(self)
 
         # setup default username and password
         logging.debug("New DigestAuthentication object")
-        self._auth = DigestAuthentication("root","root123!")
+        self._auth = DigestAuthentication("guest","guest")
         self._saved_nonce = None
         self._need_reauth = True
 
@@ -43,143 +39,163 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
         else:
             self._enabled = False
         self._auto_update_nonce = True
+        self._use_suite_scope = False
 
         callbacks.addSuiteTab(self)
         return
 
     def makeRequest(self, messageInfo, message):
         requestURL = self._helpers.analyzeRequest(messageInfo).getUrl()
+        logging.debug("requestURL: {}".format(requestURL))
         return self._callbacks.makeHttpRequest(self._helpers.buildHttpService(str(requestURL.getHost()), 
             int(requestURL.getPort()), requestURL.getProtocol() == "https"), message)
 
-    def update_request(self, messageInfo):
+    def update_current_request(self, messageInfo):
+        logging.debug("update_current_request")
 
-        responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
-        headers = responseInfo.getHeaders()
-        auth_header = None
-        
-        logging.debug("update_request")
-        for h in headers:
-            if ('WWW-Authenticate' in h) and ('nonce' in h):
-                    logging.debug("Digest Auth header found...")
-                    auth_header = h
-
-        if auth_header:
-            response_digest_auth = DigestAuthentication(self._auth.username, self._auth.password, 
-                    self._auth.method, self._auth.uri, auth_header)
-            self._saved_nonce = response_digest_auth.get_nonce()
-            logging.debug("New saved nonce: {}".format(self._saved_nonce))
-            self._ui.update_nonce()
-
-            logging.debug("Building updated request")
-            requestInfo = self._helpers.analyzeRequest(messageInfo)
-            headers = requestInfo.getHeaders()
-            uri = str(requestInfo.getUrl())
-            method = requestInfo.getMethod()
-            
-            new_headers = []
-            for header in headers:
-                if 'Authorization: Digest' in header:
-                    logging.debug("Updating nonce")
-                    self._auth.parse_auth_header(header)
-                    logging.debug("2")
-                    self._auth.set_nonce(self._saved_nonce)
-                    self._auth.uri = uri
-                    self._auth.method = method
-                    header_str = self._auth.build_digest_header()
-                    logging.debug("New header: {}".format(header_str))
-                    new_headers.append(header_str)
-                else:
-                    new_headers.append(header)
-
-            body_bytes = messageInfo.getRequest()[requestInfo.getBodyOffset():]
-            body_str = self._helpers.bytesToString(body_bytes)
-            new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
-            return new_msg
-        else:
-            logging.debug("Digest Auth header or nonce not found!")
-            return None
-
-    def check_response(self, messageInfo):
-        responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
-        headers = responseInfo.getHeaders()
-        update = False
-        auth_header = None
-        
-        logging.debug("Processing response...")
-        for h in headers:
-            if '401 Unauthorized' in h:
-                logging.debug("Got a 401 Unauthorized")
-                update = True
-            if ('WWW-Authenticate' in h) and ('nonce' in h):
-                    logging.debug("Digest Auth header found")
-                    auth_header = h
-        return update and auth_header
-
-
-    def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
-        global _reauth_counter
-        global _reauth_lock
-
-        if not self._enabled:
-            return
-
-        tool = self._callbacks.getToolName(toolFlag)
-        if not tool in self._supported_tools:
-            return
-
-        if not messageIsRequest:
-            if self._auto_update_nonce:
-                self._need_reauth = self.check_response(messageInfo)
-            return
-
+        logging.debug("Parsing request... ")
         requestInfo = self._helpers.analyzeRequest(messageInfo)
         headers = requestInfo.getHeaders()
         uri = str(requestInfo.getUrl())
         method = requestInfo.getMethod()
         new_headers = []
 
-        for h in headers:
-            if 'Authorization: Digest' in h:
-                self._auth.parse_auth_header(h)
-                if self._saved_nonce != None:
-                    logging.debug("1")
-                    self._auth.set_nonce(self._saved_nonce)
-                else:
+        for header in headers:
+            if 'authorization: digest' in header.lower():
+                if self._saved_nonce == None:
+                    logging.debug("First time, we need to save the header")
+                    self._auth.parse_auth_header(header)
                     self._saved_nonce = self._auth.get_nonce()
-                self._auth.uri = uri
-                self._auth.method = method
-                new_headers.append(self._auth.build_digest_header())
+                    logging.debug("saved_nonce is now: {}".format(self._saved_nonce))
+                    self._ui.update_nonce()
             else:
-                new_headers.append(h)
+                new_headers.append(header)
+
+        # Updating cached authentication header
+        if self._saved_nonce == None:
+            logging.debug("First time, and we don't have any cached nonce")
+            return None
+        self._auth.set_nonce(self._saved_nonce)
+        self._auth.uri = uri
+        self._auth.method = method
+        header_str = self._auth.build_digest_header()
+        logging.debug("New header: {}".format(header_str))
+        new_headers.append(header_str)
 
         body_bytes = messageInfo.getRequest()[requestInfo.getBodyOffset():]
         body_str = self._helpers.bytesToString(body_bytes)
         new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
-        messageInfo.setRequest(new_msg)
+        return new_msg
 
 
-        _reauth_lock.acquire()
-        _reauth_counter += 1
-        logging.debug("Request n. {}".format(_reauth_counter))
-        if(_reauth_counter == self._reauth_limit):
-            logging.debug("Request limit reached")
-            self._need_reauth = True
-            _reauth_counter = 0
+    def create_updated_request(self, messageInfo):
+        
+        logging.debug("create_updated_request")
 
-        _reauth_lock.release()
+        # parsing response
+        logging.debug("Parsing response... ")
+        responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
+        headers = responseInfo.getHeaders()
+        auth_header = None
+            
+        for h in headers:
+            if ('www-authenticate' in h.lower()) and ('nonce' in h.lower()): 
+                logging.debug("Digest Auth header found in response...")
+                auth_header = h
 
-        if self._auto_update_nonce and self._need_reauth:
-            # Make a first request to check if we need to update nonce
-            logging.debug("Check if we need to update nonce..")
-            logging.debug("\n\nSending reauth request: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
-            resp = self.makeRequest(messageInfo, new_msg)
-            updated_resp = self.update_request(resp)
-            self._need_reauth = False
-            if updated_resp:
-                messageInfo.setRequest(updated_resp)
+        if not auth_header:
+            logging.debug("Digest Auth header or nonce not found!")
+            return None
 
-        logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
+        logging.debug("Parsing request... ")
+        requestInfo = self._helpers.analyzeRequest(messageInfo)
+        headers = requestInfo.getHeaders()
+        uri = str(requestInfo.getUrl())
+        method = requestInfo.getMethod()
+        new_headers = []
+
+        for header in headers:
+            if 'authorization: digest' in header.lower():
+                continue
+            else:
+                new_headers.append(header)
+
+        logging.debug("Creating new message... ")
+        response_digest_auth = DigestAuthentication(header_str=auth_header)
+        response_digest_auth.method = method
+        response_digest_auth.uri = uri
+        response_digest_auth.username = self._auth.username
+        response_digest_auth.password = self._auth.password
+        self._auth = response_digest_auth
+        self._saved_nonce = self._auth.get_nonce()
+        logging.debug("saved_nonce is now: {}".format(self._saved_nonce))
+        self._ui.update_nonce()
+        header_str = self._auth.build_digest_header()
+        new_headers.append(header_str)
+
+        body_bytes = messageInfo.getRequest()[requestInfo.getBodyOffset():]
+        body_str = self._helpers.bytesToString(body_bytes)
+        new_msg = self._helpers.buildHttpMessage(new_headers, body_str)
+
+        return new_msg
+
+
+    def check_response(self, messageInfo):
+        responseInfo = self._helpers.analyzeResponse(messageInfo.getResponse())
+        headers = responseInfo.getHeaders()
+        update = False
+        auth_header = None
+        password_ok = False
+        
+        logging.debug("Processing response...")
+        for h in headers:
+            if '401 unauthorized' in h.lower():
+                logging.debug("Got a 401 Unauthorized")
+                update = True
+            if ('www-authenticate' in h.lower()) and ('nonce' in h.lower()):
+                logging.debug("Digest Auth header found: {}".format(h))
+                auth_header = h
+                if 'stale=true' in h:
+                    password_ok = True
+        return update, auth_header, password_ok
+
+
+    def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
+        # check if tool is enabled
+        if not self._enabled:
+            return
+        
+        # check if URL is in scope
+        if self._use_suite_scope:
+            requestInfo = self._helpers.analyzeRequest(messageInfo)
+            if not self._callbacks.isInScope(requestInfo.getUrl()):
+                return
+
+        # check if tool is enabled
+        tool = self._callbacks.getToolName(toolFlag)
+        if not tool in self._supported_tools:
+            return
+
+        if messageIsRequest:
+            # case request
+            new_req = self.update_current_request(messageInfo)
+            if new_req != None:
+                logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_req)))
+                messageInfo.setRequest(new_req)
+            return
+        else:
+            # case response
+            if self._auto_update_nonce:
+                self._need_reauth, auth_header, password_ok = self.check_response(messageInfo)
+                if (self._need_reauth and password_ok) or (self._saved_nonce == None):
+                    da = DigestAuthentication(self._auth.username, self._auth.password, auth_header)
+                    new_msg = self.create_updated_request(messageInfo)
+                    logging.debug("\n\nSending: {}\n\n=========\n\n".format(self._helpers.bytesToString(new_msg)))
+                    updated_resp = self.makeRequest(messageInfo, new_msg).getResponse()
+                    logging.debug("\n\nResponse: {}\n\n=========\n\n".format(self._helpers.bytesToString(updated_resp)))
+                    messageInfo.setResponse(updated_resp)
+                else:
+                    logging.debug("Allright!")
         return
     
     # GETTERS / SETTERS section
@@ -223,9 +239,16 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, ITab, IExtensio
     def get_tools(self):
         return  self._supported_tools
 
+    def get_use_suite_scope(self):
+        return self._use_suite_scope
+
+    def set_use_suite_scope(self, flag):
+        self._use_suite_scope = flag
+
     def add_tool(self, tool):
         self._supported_tools.add(tool)
 
     def del_tool(self, tool):
         self._supported_tools.discard(tool)
+
 

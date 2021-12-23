@@ -24,7 +24,8 @@ Currently the tools supports the following features:
 - Set credentials
 - Auto-update nonce if it detects a "401 Unauthorized" response from the server
 - Show current nonce (debug purposes only)
+- Use the suite scope defined in the Target tab
 
-and it works with Repeater, Scanner and Intruder tools.
+and it works with Repeater, Scanner, Intruder and Proxy tools.
 
 **Last but not least**: PRs are always welcome!

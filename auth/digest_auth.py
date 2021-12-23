@@ -7,16 +7,17 @@ from urlparse import urlparse
 
 class DigestAuthentication(object):
 
-    def __init__(self, username, password, method = "GET", uri = "", header_str=None):
-        self.header_list = ['username' , 'realm' , 'cnonce' , 'nonce' , 'nc' , 'uri' , 'algorithm' , 'response' , 'qop', 'opaque', 'entdig']
-        self.password = password
-        self.username = username
-        self.method = method
-        self.uri = uri
+    def __init__(self, username="", password="", method="GET", uri="", header_str=None):
+        self.header_list = ['username' , 'realm' , 'domain', 'cnonce' , 'nonce' , 'nc' , 'uri' , 'algorithm' , 'response' , 'qop', 'opaque', 'entdig']
+        self.password = None
+        self.username = None
+        self.method = None
+        self.uri = None
         self.realm = None
+        self.domain = None
         self.cnonce = None
         self._nonce = None
-        self.nc = None
+        self.nc = 0
         self.uri = None
         self.algorithm = None
         self.response = None
@@ -25,12 +26,16 @@ class DigestAuthentication(object):
         self.entdig = None
         if header_str:
             self.parse_auth_header(header_str)
+        self.password = password
+        self.username = username
+        self.method = method
+        self.uri = uri
 
 
     def parse_auth_header(self, auth_header):
         name = auth_header.split(':')[0]
         value = "".join(auth_header.split(':')[1:])
-        logging.debug("name: {} - value: {}".format(name,value))
+        #logging.debug("name: {} - value: {}".format(name,value))
         for param in value.split(','):
             #key,val = param.split('=') # <== bad idea: some params may contain '=' sign
             # better to split separately key and val
@@ -45,6 +50,8 @@ class DigestAuthentication(object):
                 self.username = val
             elif 'realm' in key:
                 self.realm = val
+            elif 'domain' in key:
+                self.domain = val
             elif 'cnonce' in key:
                 self.cnonce = val
             elif 'nonce' in key:
