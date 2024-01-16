@@ -34,7 +34,7 @@ class DigestAuthentication(object):
 
     def parse_auth_header(self, auth_header):
         name = auth_header.split(':')[0]
-        value = "".join(auth_header.split(':')[1:])
+        value = ":".join(auth_header.split(':')[1:])
         #logging.debug("name: {} - value: {}".format(name,value))
         for param in value.split(','):
             #key,val = param.split('=') # <== bad idea: some params may contain '=' sign
